@@ -160,9 +160,17 @@ void NMGraphNodeItem::paint(QPainter *painter,
 
 QVariant NMGraphNodeItem::itemChange(GraphicsItemChange change,
                                      const QVariant &value) {
-  if (change == ItemPositionHasChanged) {
-    // Update connections when node moves
-    // This would be handled by the parent scene
+  if (change == ItemPositionHasChanged && scene()) {
+    // Update all connections attached to this node
+    auto *graphScene = qobject_cast<NMStoryGraphScene *>(scene());
+    if (graphScene) {
+      const auto connections = graphScene->findConnectionsForNode(this);
+      for (auto *conn : connections) {
+        if (conn) {
+          conn->updatePath();
+        }
+      }
+    }
   } else if (change == ItemSelectedHasChanged) {
     m_isSelected = value.toBool();
   }
@@ -193,7 +201,12 @@ void NMGraphNodeItem::contextMenuEvent(QGraphicsSceneContextMenuEvent *event) {
 
   if (selectedAction == breakpointAction) {
     // Toggle breakpoint via Play Mode Controller
-    NMPlayModeController::instance().toggleBreakpoint(m_nodeIdString);
+    // Only toggle if we have a valid node ID string
+    if (!m_nodeIdString.isEmpty()) {
+      NMPlayModeController::instance().toggleBreakpoint(m_nodeIdString);
+      // Update visual state immediately
+      setBreakpoint(NMPlayModeController::instance().hasBreakpoint(m_nodeIdString));
+    }
   } else if (selectedAction == deleteAction) {
     // TODO: Implement node deletion via undo system
     // For now, just mark for deletion
@@ -210,13 +223,17 @@ void NMGraphNodeItem::contextMenuEvent(QGraphicsSceneContextMenuEvent *event) {
 
 NMGraphConnectionItem::NMGraphConnectionItem(NMGraphNodeItem *startNode,
                                              NMGraphNodeItem *endNode)
-    : m_startNode(startNode), m_endNode(endNode) {
+    : QGraphicsItem(), m_startNode(startNode), m_endNode(endNode) {
   setZValue(-1); // Draw behind nodes
-  updatePath();
+  // Don't call updatePath() in constructor - let the scene call it after adding
 }
 
 void NMGraphConnectionItem::updatePath() {
   if (!m_startNode || !m_endNode)
+    return;
+
+  // Safety check - ensure nodes are still in a scene
+  if (!m_startNode->scene() || !m_endNode->scene())
     return;
 
   QPointF start = m_startNode->sceneBoundingRect().center();
@@ -270,9 +287,16 @@ NMGraphNodeItem *NMStoryGraphScene::addNode(const QString &title,
 
 NMGraphConnectionItem *NMStoryGraphScene::addConnection(NMGraphNodeItem *from,
                                                         NMGraphNodeItem *to) {
+  if (!from || !to)
+    return nullptr;
+
   auto *connection = new NMGraphConnectionItem(from, to);
   addItem(connection);
   m_connections.append(connection);
+
+  // Now update the path after the connection is added to the scene
+  connection->updatePath();
+
   return connection;
 }
 

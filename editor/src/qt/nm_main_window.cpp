@@ -440,6 +440,20 @@ void NMMainWindow::setupConnections() {
   connect(m_actionDocumentation, &QAction::triggered, []() {
     QDesktopServices::openUrl(QUrl("https://github.com/VisageDvachevsky/NM-"));
   });
+
+  // Panel inter-connections
+  // Connect scene view selection to inspector
+  connect(m_sceneViewPanel, &NMSceneViewPanel::objectSelected, m_inspectorPanel,
+          &NMInspectorPanel::setSelectedObject);
+
+  // Connect hierarchy selection to scene view and inspector
+  connect(m_hierarchyPanel, &NMHierarchyPanel::objectSelected, m_sceneViewPanel,
+          [this](const QString &objectId) {
+            // Forward selection to scene view
+            // This would require a method in scene view to select by ID
+          });
+  connect(m_hierarchyPanel, &NMHierarchyPanel::objectSelected, m_inspectorPanel,
+          &NMInspectorPanel::setSelectedObject);
 }
 
 void NMMainWindow::setupShortcuts() {

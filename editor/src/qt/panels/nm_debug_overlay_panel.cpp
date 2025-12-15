@@ -40,7 +40,9 @@ void NMDebugOverlayPanel::onUpdate(double deltaTime) {
 }
 
 void NMDebugOverlayPanel::setupUI() {
-  auto *layout = new QVBoxLayout;
+  // Create content widget
+  auto *contentWidget = new QWidget;
+  auto *layout = new QVBoxLayout(contentWidget);
   layout->setContentsMargins(0, 0, 0, 0);
   layout->setSpacing(0);
 
@@ -219,7 +221,9 @@ void NMDebugOverlayPanel::setupUI() {
   }
 
   layout->addWidget(m_tabWidget);
-  setLayout(layout);
+
+  // Use setContentWidget instead of setLayout
+  setContentWidget(contentWidget);
 }
 
 void NMDebugOverlayPanel::updateVariablesTab(const QVariantMap &variables) {
