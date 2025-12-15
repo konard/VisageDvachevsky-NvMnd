@@ -470,10 +470,30 @@ void NMMainWindow::createDefaultLayout() {
   m_assetBrowserPanel->show();
   m_hierarchyPanel->show();
 
+  // Set default docking positions
+  // Left side: Hierarchy and Asset Browser
+  addDockWidget(Qt::LeftDockWidgetArea, m_hierarchyPanel);
+  addDockWidget(Qt::LeftDockWidgetArea, m_assetBrowserPanel);
+  tabifyDockWidget(m_hierarchyPanel, m_assetBrowserPanel);
+  m_hierarchyPanel->raise(); // Make Hierarchy the active tab
+
+  // Center: Scene View and Story Graph
+  setCentralWidget(nullptr); // Remove central widget to allow dock widgets to fill
+  addDockWidget(Qt::TopDockWidgetArea, m_sceneViewPanel);
+  addDockWidget(Qt::TopDockWidgetArea, m_storyGraphPanel);
+  tabifyDockWidget(m_sceneViewPanel, m_storyGraphPanel);
+  m_sceneViewPanel->raise(); // Make Scene View the active tab
+
+  // Right side: Inspector
+  addDockWidget(Qt::RightDockWidgetArea, m_inspectorPanel);
+
+  // Bottom: Console
+  addDockWidget(Qt::BottomDockWidgetArea, m_consolePanel);
+
   // Resize to reasonable proportions
   resizeDocks({m_hierarchyPanel}, {250}, Qt::Horizontal);
   resizeDocks({m_inspectorPanel}, {300}, Qt::Horizontal);
-  resizeDocks({m_consolePanel, m_assetBrowserPanel}, {200, 200}, Qt::Vertical);
+  resizeDocks({m_consolePanel}, {200}, Qt::Vertical);
 }
 
 void NMMainWindow::onUpdateTick() {
@@ -539,8 +559,39 @@ void NMMainWindow::saveLayout() {
 
 void NMMainWindow::restoreLayout() {
   QSettings settings("NovelMind", "Editor");
-  restoreGeometry(settings.value("mainwindow/geometry").toByteArray());
-  restoreState(settings.value("mainwindow/state").toByteArray());
+
+  // Restore geometry
+  QByteArray geometry = settings.value("mainwindow/geometry").toByteArray();
+  if (!geometry.isEmpty()) {
+    restoreGeometry(geometry);
+  }
+
+  // Restore dock state
+  QByteArray state = settings.value("mainwindow/state").toByteArray();
+  if (!state.isEmpty()) {
+    restoreState(state);
+  }
+
+  // Ensure all panels are at least created and available
+  // Even if they were hidden in saved state, they should be accessible via View menu
+  if (m_sceneViewPanel && !m_sceneViewPanel->isVisible()) {
+    m_actionToggleSceneView->setChecked(false);
+  }
+  if (m_storyGraphPanel && !m_storyGraphPanel->isVisible()) {
+    m_actionToggleStoryGraph->setChecked(false);
+  }
+  if (m_inspectorPanel && !m_inspectorPanel->isVisible()) {
+    m_actionToggleInspector->setChecked(false);
+  }
+  if (m_consolePanel && !m_consolePanel->isVisible()) {
+    m_actionToggleConsole->setChecked(false);
+  }
+  if (m_assetBrowserPanel && !m_assetBrowserPanel->isVisible()) {
+    m_actionToggleAssetBrowser->setChecked(false);
+  }
+  if (m_hierarchyPanel && !m_hierarchyPanel->isVisible()) {
+    m_actionToggleHierarchy->setChecked(false);
+  }
 }
 
 void NMMainWindow::resetToDefaultLayout() {
