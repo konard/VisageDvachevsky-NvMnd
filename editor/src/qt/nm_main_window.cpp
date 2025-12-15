@@ -443,8 +443,12 @@ void NMMainWindow::setupConnections() {
 
   // Panel inter-connections
   // Connect scene view selection to inspector
-  connect(m_sceneViewPanel, &NMSceneViewPanel::objectSelected, m_inspectorPanel,
-          &NMInspectorPanel::setSelectedObject);
+  connect(m_sceneViewPanel, &NMSceneViewPanel::objectSelected, this,
+          [this](const QString &objectId) {
+            if (m_inspectorPanel) {
+              m_inspectorPanel->inspectObject("Scene Object", objectId, true);
+            }
+          });
 
   // Connect hierarchy selection to scene view and inspector
   connect(m_hierarchyPanel, &NMHierarchyPanel::objectSelected, m_sceneViewPanel,
@@ -452,8 +456,12 @@ void NMMainWindow::setupConnections() {
             // Forward selection to scene view
             // This would require a method in scene view to select by ID
           });
-  connect(m_hierarchyPanel, &NMHierarchyPanel::objectSelected, m_inspectorPanel,
-          &NMInspectorPanel::setSelectedObject);
+  connect(m_hierarchyPanel, &NMHierarchyPanel::objectSelected, this,
+          [this](const QString &objectId) {
+            if (m_inspectorPanel) {
+              m_inspectorPanel->inspectObject("Hierarchy Object", objectId, true);
+            }
+          });
 }
 
 void NMMainWindow::setupShortcuts() {
