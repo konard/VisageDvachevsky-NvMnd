@@ -590,25 +590,27 @@ void NMWelcomeDialog::styleDialog() {
 
 void NMWelcomeDialog::setupAnimations() {
   // Set initial opacity to 0 for entrance animation
+  // IMPORTANT: Opacity effects are created but set to 1.0 initially to prevent
+  // panels from being invisible if animations fail to start
   if (m_leftPanel) {
     QGraphicsOpacityEffect *leftOpacity =
         new QGraphicsOpacityEffect(m_leftPanel);
     m_leftPanel->setGraphicsEffect(leftOpacity);
-    leftOpacity->setOpacity(0.0);
+    leftOpacity->setOpacity(1.0); // Start visible, will be set to 0 before animation
   }
 
   if (m_centerPanel) {
     QGraphicsOpacityEffect *centerOpacity =
         new QGraphicsOpacityEffect(m_centerPanel);
     m_centerPanel->setGraphicsEffect(centerOpacity);
-    centerOpacity->setOpacity(0.0);
+    centerOpacity->setOpacity(1.0); // Start visible, will be set to 0 before animation
   }
 
   if (m_rightPanel) {
     QGraphicsOpacityEffect *rightOpacity =
         new QGraphicsOpacityEffect(m_rightPanel);
     m_rightPanel->setGraphicsEffect(rightOpacity);
-    rightOpacity->setOpacity(0.0);
+    rightOpacity->setOpacity(1.0); // Start visible, will be set to 0 before animation
   }
 }
 
@@ -622,6 +624,8 @@ void NMWelcomeDialog::startEntranceAnimations() {
 
   // Animate left panel
   if (m_leftPanel && m_leftPanel->graphicsEffect()) {
+    // Set opacity to 0 right before starting animation
+    qobject_cast<QGraphicsOpacityEffect*>(m_leftPanel->graphicsEffect())->setOpacity(0.0);
     QPropertyAnimation *leftAnim =
         new QPropertyAnimation(m_leftPanel->graphicsEffect(), "opacity", this);
     leftAnim->setDuration(600);
@@ -633,6 +637,8 @@ void NMWelcomeDialog::startEntranceAnimations() {
 
   // Animate center panel (slightly delayed)
   if (m_centerPanel && m_centerPanel->graphicsEffect()) {
+    // Set opacity to 0 right before starting animation
+    qobject_cast<QGraphicsOpacityEffect*>(m_centerPanel->graphicsEffect())->setOpacity(0.0);
     QSequentialAnimationGroup *centerSeq = new QSequentialAnimationGroup(this);
     QPropertyAnimation *centerDelay =
         new QPropertyAnimation(this, "windowOpacity", this);
@@ -654,6 +660,8 @@ void NMWelcomeDialog::startEntranceAnimations() {
 
   // Animate right panel (slightly more delayed)
   if (m_rightPanel && m_rightPanel->graphicsEffect()) {
+    // Set opacity to 0 right before starting animation
+    qobject_cast<QGraphicsOpacityEffect*>(m_rightPanel->graphicsEffect())->setOpacity(0.0);
     QSequentialAnimationGroup *rightSeq = new QSequentialAnimationGroup(this);
     QPropertyAnimation *rightDelay =
         new QPropertyAnimation(this, "windowOpacity", this);

@@ -742,15 +742,29 @@ QPixmap NMIconManager::renderSvg(const QString &svgData, int size,
   QByteArray svgBytes = coloredSvg.toUtf8();
   QSvgRenderer renderer(svgBytes);
 
+  // Check if SVG renderer is valid to prevent rendering crashes
+  if (!renderer.isValid()) {
+    // Return a valid but empty pixmap if SVG rendering fails
+    QPixmap pixmap(size, size);
+    pixmap.fill(Qt::transparent);
+    return pixmap;
+  }
+
   // Create pixmap
   QPixmap pixmap(size, size);
   pixmap.fill(Qt::transparent);
 
-  // Render SVG
+  // Render SVG with error handling
   QPainter painter(&pixmap);
+  if (!painter.isActive()) {
+    // If painter fails to initialize, return empty pixmap
+    return pixmap;
+  }
+
   painter.setRenderHint(QPainter::Antialiasing);
   painter.setRenderHint(QPainter::SmoothPixmapTransform);
   renderer.render(&painter);
+  painter.end();
 
   return pixmap;
 }
