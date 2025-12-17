@@ -120,9 +120,11 @@ void NMGraphNodeItem::paint(QPainter *painter,
     iconColor = QColor(255, 180, 255); // Pink
   }
 
-  // Draw icon
+  // Draw icon (with null check to prevent segfault if icon fails to load)
   QPixmap iconPixmap = NMIconManager::instance().getPixmap(iconName, 18, iconColor);
-  painter->drawPixmap(6, static_cast<int>(headerRect.center().y()) - 9, iconPixmap);
+  if (!iconPixmap.isNull()) {
+    painter->drawPixmap(6, static_cast<int>(headerRect.center().y()) - 9, iconPixmap);
+  }
 
   // Draw node type text
   painter->setPen(palette.textSecondary);
