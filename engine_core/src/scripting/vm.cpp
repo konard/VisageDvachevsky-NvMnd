@@ -337,9 +337,14 @@ void VirtualMachine::executeInstruction(const Instruction &instr) {
       it->second(args);
     }
 
-    // These commands typically wait for user input
+    // These commands typically wait for user input or cause execution to pause
     if (instr.opcode == OpCode::SAY || instr.opcode == OpCode::CHOICE ||
         instr.opcode == OpCode::WAIT) {
+      m_waiting = true;
+    }
+    // GOTO_SCENE causes a scene transition which resets VM state
+    // Set waiting to prevent run() loop from continuing after reset
+    if (instr.opcode == OpCode::GOTO_SCENE) {
       m_waiting = true;
     }
     break;

@@ -162,6 +162,11 @@ Result<void> EditorRuntimeHost::playFromScene(const std::string &sceneId) {
     }
   }
 
+  // Update scene graph with the current scene ID
+  if (m_sceneGraph) {
+    m_sceneGraph->setSceneId(sceneId);
+  }
+
   m_state = EditorRuntimeState::Running;
   fireStateChanged(m_state);
 
@@ -829,6 +834,10 @@ void EditorRuntimeHost::fireBreakpointHit(const Breakpoint &bp) {
 void EditorRuntimeHost::onRuntimeEvent(const scripting::ScriptEvent &event) {
   switch (event.type) {
   case scripting::ScriptEventType::SceneChange:
+    // Update scene graph with new scene ID
+    if (m_sceneGraph) {
+      m_sceneGraph->setSceneId(event.name);
+    }
     if (m_onSceneChanged) {
       m_onSceneChanged(event.name);
     }
