@@ -589,29 +589,13 @@ void NMWelcomeDialog::styleDialog() {
 }
 
 void NMWelcomeDialog::setupAnimations() {
-  // Set initial opacity to 0 for entrance animation
-  // IMPORTANT: Opacity effects are created but set to 1.0 initially to prevent
-  // panels from being invisible if animations fail to start
-  if (m_leftPanel) {
-    QGraphicsOpacityEffect *leftOpacity =
-        new QGraphicsOpacityEffect(m_leftPanel);
-    m_leftPanel->setGraphicsEffect(leftOpacity);
-    leftOpacity->setOpacity(1.0); // Start visible, will be set to 0 before animation
-  }
+  // IMPORTANT: Entrance animations are disabled to ensure panels are always
+  // visible. Previously, setting opacity to 0 before animations caused panels
+  // to become invisible if animations failed to start or were interrupted. The
+  // opacity effects are no longer used to prevent any visibility issues.
 
-  if (m_centerPanel) {
-    QGraphicsOpacityEffect *centerOpacity =
-        new QGraphicsOpacityEffect(m_centerPanel);
-    m_centerPanel->setGraphicsEffect(centerOpacity);
-    centerOpacity->setOpacity(1.0); // Start visible, will be set to 0 before animation
-  }
-
-  if (m_rightPanel) {
-    QGraphicsOpacityEffect *rightOpacity =
-        new QGraphicsOpacityEffect(m_rightPanel);
-    m_rightPanel->setGraphicsEffect(rightOpacity);
-    rightOpacity->setOpacity(1.0); // Start visible, will be set to 0 before animation
-  }
+  // Animation system is disabled - panels remain fully visible at all times
+  return;
 }
 
 void NMWelcomeDialog::startEntranceAnimations() {
@@ -620,68 +604,9 @@ void NMWelcomeDialog::startEntranceAnimations() {
   }
   m_animationsPlayed = true;
 
-  m_entranceAnimGroup = new QParallelAnimationGroup(this);
-
-  // Animate left panel
-  if (m_leftPanel && m_leftPanel->graphicsEffect()) {
-    // Set opacity to 0 right before starting animation
-    qobject_cast<QGraphicsOpacityEffect*>(m_leftPanel->graphicsEffect())->setOpacity(0.0);
-    QPropertyAnimation *leftAnim =
-        new QPropertyAnimation(m_leftPanel->graphicsEffect(), "opacity", this);
-    leftAnim->setDuration(600);
-    leftAnim->setStartValue(0.0);
-    leftAnim->setEndValue(1.0);
-    leftAnim->setEasingCurve(QEasingCurve::OutCubic);
-    m_entranceAnimGroup->addAnimation(leftAnim);
-  }
-
-  // Animate center panel (slightly delayed)
-  if (m_centerPanel && m_centerPanel->graphicsEffect()) {
-    // Set opacity to 0 right before starting animation
-    qobject_cast<QGraphicsOpacityEffect*>(m_centerPanel->graphicsEffect())->setOpacity(0.0);
-    QSequentialAnimationGroup *centerSeq = new QSequentialAnimationGroup(this);
-    QPropertyAnimation *centerDelay =
-        new QPropertyAnimation(this, "windowOpacity", this);
-    centerDelay->setDuration(100); // Small delay
-    centerDelay->setStartValue(1.0);
-    centerDelay->setEndValue(1.0);
-
-    QPropertyAnimation *centerAnim = new QPropertyAnimation(
-        m_centerPanel->graphicsEffect(), "opacity", this);
-    centerAnim->setDuration(600);
-    centerAnim->setStartValue(0.0);
-    centerAnim->setEndValue(1.0);
-    centerAnim->setEasingCurve(QEasingCurve::OutCubic);
-
-    centerSeq->addAnimation(centerDelay);
-    centerSeq->addAnimation(centerAnim);
-    m_entranceAnimGroup->addAnimation(centerSeq);
-  }
-
-  // Animate right panel (slightly more delayed)
-  if (m_rightPanel && m_rightPanel->graphicsEffect()) {
-    // Set opacity to 0 right before starting animation
-    qobject_cast<QGraphicsOpacityEffect*>(m_rightPanel->graphicsEffect())->setOpacity(0.0);
-    QSequentialAnimationGroup *rightSeq = new QSequentialAnimationGroup(this);
-    QPropertyAnimation *rightDelay =
-        new QPropertyAnimation(this, "windowOpacity", this);
-    rightDelay->setDuration(200); // Larger delay
-    rightDelay->setStartValue(1.0);
-    rightDelay->setEndValue(1.0);
-
-    QPropertyAnimation *rightAnim =
-        new QPropertyAnimation(m_rightPanel->graphicsEffect(), "opacity", this);
-    rightAnim->setDuration(600);
-    rightAnim->setStartValue(0.0);
-    rightAnim->setEndValue(1.0);
-    rightAnim->setEasingCurve(QEasingCurve::OutCubic);
-
-    rightSeq->addAnimation(rightDelay);
-    rightSeq->addAnimation(rightAnim);
-    m_entranceAnimGroup->addAnimation(rightSeq);
-  }
-
-  m_entranceAnimGroup->start();
+  // Entrance animations are disabled to prevent visibility issues.
+  // Panels remain fully visible without any opacity animations.
+  return;
 }
 
 void NMWelcomeDialog::animateButtonHover(QWidget *button, bool entering) {
