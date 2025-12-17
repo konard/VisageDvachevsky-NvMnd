@@ -41,7 +41,9 @@ void NMPlayToolbarPanel::onUpdate(double deltaTime) {
 }
 
 void NMPlayToolbarPanel::setupUI() {
-  auto *layout = new QVBoxLayout;
+  // Create content widget
+  auto *contentWidget = new QWidget;
+  auto *layout = new QVBoxLayout(contentWidget);
   layout->setContentsMargins(4, 4, 4, 4);
   layout->setSpacing(4);
 
@@ -107,7 +109,8 @@ void NMPlayToolbarPanel::setupUI() {
   layout->addWidget(toolbar);
   layout->addStretch();
 
-  setLayout(layout);
+  // Use setContentWidget instead of setLayout
+  setContentWidget(contentWidget);
 }
 
 void NMPlayToolbarPanel::updateButtonStates() {

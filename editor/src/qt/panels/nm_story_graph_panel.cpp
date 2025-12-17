@@ -74,26 +74,64 @@ void NMGraphNodeItem::paint(QPainter *painter,
   painter->setPen(QPen(palette.borderLight, 1));
   painter->drawRoundedRect(boundingRect(), CORNER_RADIUS, CORNER_RADIUS);
 
-  // Header bar
-  QRectF headerRect(0, 0, NODE_WIDTH, 24);
+  // Header bar with icon
+  QRectF headerRect(0, 0, NODE_WIDTH, 28);
   painter->setBrush(palette.bgDark);
   painter->setPen(Qt::NoPen);
   QPainterPath headerPath;
   headerPath.addRoundedRect(headerRect, CORNER_RADIUS, CORNER_RADIUS);
   // Clip to top corners only
   QPainterPath clipPath;
-  clipPath.addRect(QRectF(0, CORNER_RADIUS, NODE_WIDTH, 24 - CORNER_RADIUS));
+  clipPath.addRect(QRectF(0, CORNER_RADIUS, NODE_WIDTH, 28 - CORNER_RADIUS));
   headerPath = headerPath.united(clipPath);
   painter->drawPath(headerPath);
 
-  // Node type (header)
+  // Node type icon + text (header)
+  QString iconName = "node-dialogue"; // default
+  QColor iconColor = palette.textSecondary;
+
+  // Map node types to icons and colors
+  if (m_nodeType.contains("Dialogue", Qt::CaseInsensitive)) {
+    iconName = "node-dialogue";
+    iconColor = QColor(100, 180, 255); // Blue
+  } else if (m_nodeType.contains("Choice", Qt::CaseInsensitive)) {
+    iconName = "node-choice";
+    iconColor = QColor(255, 180, 100); // Orange
+  } else if (m_nodeType.contains("Event", Qt::CaseInsensitive)) {
+    iconName = "node-event";
+    iconColor = QColor(255, 220, 100); // Yellow
+  } else if (m_nodeType.contains("Condition", Qt::CaseInsensitive)) {
+    iconName = "node-condition";
+    iconColor = QColor(200, 100, 255); // Purple
+  } else if (m_nodeType.contains("Random", Qt::CaseInsensitive)) {
+    iconName = "node-random";
+    iconColor = QColor(100, 255, 180); // Green
+  } else if (m_nodeType.contains("Start", Qt::CaseInsensitive)) {
+    iconName = "node-start";
+    iconColor = QColor(100, 255, 100); // Bright Green
+  } else if (m_nodeType.contains("End", Qt::CaseInsensitive)) {
+    iconName = "node-end";
+    iconColor = QColor(255, 100, 100); // Red
+  } else if (m_nodeType.contains("Jump", Qt::CaseInsensitive)) {
+    iconName = "node-jump";
+    iconColor = QColor(180, 180, 255); // Light Blue
+  } else if (m_nodeType.contains("Variable", Qt::CaseInsensitive)) {
+    iconName = "node-variable";
+    iconColor = QColor(255, 180, 255); // Pink
+  }
+
+  // Draw icon
+  QPixmap iconPixmap = NMIconManager::instance().getPixmap(iconName, 18, iconColor);
+  painter->drawPixmap(6, static_cast<int>(headerRect.center().y()) - 9, iconPixmap);
+
+  // Draw node type text
   painter->setPen(palette.textSecondary);
   painter->setFont(NMStyleManager::instance().defaultFont());
-  painter->drawText(headerRect.adjusted(8, 0, -8, 0),
+  painter->drawText(headerRect.adjusted(28, 0, -8, 0),
                     Qt::AlignVCenter | Qt::AlignLeft, m_nodeType);
 
   // Node title (body)
-  QRectF titleRect(8, 30, NODE_WIDTH - 16, NODE_HEIGHT - 38);
+  QRectF titleRect(8, 34, NODE_WIDTH - 16, NODE_HEIGHT - 42);
   painter->setPen(palette.textPrimary);
   QFont boldFont = NMStyleManager::instance().defaultFont();
   boldFont.setBold(true);
@@ -160,9 +198,17 @@ void NMGraphNodeItem::paint(QPainter *painter,
 
 QVariant NMGraphNodeItem::itemChange(GraphicsItemChange change,
                                      const QVariant &value) {
-  if (change == ItemPositionHasChanged) {
-    // Update connections when node moves
-    // This would be handled by the parent scene
+  if (change == ItemPositionHasChanged && scene()) {
+    // Update all connections attached to this node
+    auto *graphScene = qobject_cast<NMStoryGraphScene *>(scene());
+    if (graphScene) {
+      const auto connections = graphScene->findConnectionsForNode(this);
+      for (auto *conn : connections) {
+        if (conn) {
+          conn->updatePath();
+        }
+      }
+    }
   } else if (change == ItemSelectedHasChanged) {
     m_isSelected = value.toBool();
   }
@@ -193,7 +239,12 @@ void NMGraphNodeItem::contextMenuEvent(QGraphicsSceneContextMenuEvent *event) {
 
   if (selectedAction == breakpointAction) {
     // Toggle breakpoint via Play Mode Controller
-    NMPlayModeController::instance().toggleBreakpoint(m_nodeIdString);
+    // Only toggle if we have a valid node ID string
+    if (!m_nodeIdString.isEmpty()) {
+      NMPlayModeController::instance().toggleBreakpoint(m_nodeIdString);
+      // Update visual state immediately
+      setBreakpoint(NMPlayModeController::instance().hasBreakpoint(m_nodeIdString));
+    }
   } else if (selectedAction == deleteAction) {
     // TODO: Implement node deletion via undo system
     // For now, just mark for deletion
@@ -210,13 +261,17 @@ void NMGraphNodeItem::contextMenuEvent(QGraphicsSceneContextMenuEvent *event) {
 
 NMGraphConnectionItem::NMGraphConnectionItem(NMGraphNodeItem *startNode,
                                              NMGraphNodeItem *endNode)
-    : m_startNode(startNode), m_endNode(endNode) {
+    : QGraphicsItem(), m_startNode(startNode), m_endNode(endNode) {
   setZValue(-1); // Draw behind nodes
-  updatePath();
+  // Don't call updatePath() in constructor - let the scene call it after adding
 }
 
 void NMGraphConnectionItem::updatePath() {
   if (!m_startNode || !m_endNode)
+    return;
+
+  // Safety check - ensure nodes are still in a scene
+  if (!m_startNode->scene() || !m_endNode->scene())
     return;
 
   QPointF start = m_startNode->sceneBoundingRect().center();
@@ -270,9 +325,16 @@ NMGraphNodeItem *NMStoryGraphScene::addNode(const QString &title,
 
 NMGraphConnectionItem *NMStoryGraphScene::addConnection(NMGraphNodeItem *from,
                                                         NMGraphNodeItem *to) {
+  if (!from || !to)
+    return nullptr;
+
   auto *connection = new NMGraphConnectionItem(from, to);
   addItem(connection);
   m_connections.append(connection);
+
+  // Now update the path after the connection is added to the scene
+  connection->updatePath();
+
   return connection;
 }
 

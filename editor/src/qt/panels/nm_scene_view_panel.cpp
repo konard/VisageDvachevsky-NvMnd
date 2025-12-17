@@ -5,6 +5,7 @@
 #include <QAbstractButton>
 #include <QAction>
 #include <QButtonGroup>
+#include <QDateTime>
 #include <QGraphicsEllipseItem>
 #include <QGraphicsLineItem>
 #include <QGraphicsPolygonItem>
@@ -31,7 +32,7 @@ NMSceneObject::NMSceneObject(const QString &id, NMSceneObjectType type,
   setFlag(ItemSendsGeometryChanges, true);
   setAcceptHoverEvents(true);
 
-  // Create placeholder pixmap based on type
+  // Create placeholder pixmap based on type with icon
   QPixmap pixmap(200, 300);
   pixmap.fill(Qt::transparent);
 
@@ -40,36 +41,58 @@ NMSceneObject::NMSceneObject(const QString &id, NMSceneObjectType type,
 
   const auto &palette = NMStyleManager::instance().palette();
 
-  // Draw different shapes based on type
+  // Get icon based on type
+  QString iconName;
+  QColor objectColor;
+  QString typeName;
+
   switch (type) {
   case NMSceneObjectType::Background:
-    painter.fillRect(pixmap.rect(), QColor(60, 60, 80, 180));
-    painter.setPen(QPen(palette.textPrimary, 2));
-    painter.drawText(pixmap.rect(), Qt::AlignCenter, "Background");
+    iconName = "object-background";
+    objectColor = QColor(60, 90, 120, 200);
+    typeName = "Background";
+    painter.fillRect(pixmap.rect(), objectColor);
     break;
 
   case NMSceneObjectType::Character:
-    painter.setBrush(QColor(100, 150, 200, 180));
+    iconName = "object-character";
+    objectColor = QColor(100, 150, 200, 200);
+    typeName = "Character";
+    painter.setBrush(objectColor);
     painter.setPen(QPen(palette.textPrimary, 2));
     painter.drawEllipse(50, 30, 100, 120); // Head
     painter.drawRect(70, 150, 60, 100);    // Body
-    painter.drawText(pixmap.rect(), Qt::AlignCenter | Qt::AlignBottom,
-                     "Character");
     break;
 
   case NMSceneObjectType::UI:
-    painter.fillRect(0, 0, 200, 100, QColor(150, 150, 150, 180));
-    painter.setPen(QPen(palette.textPrimary, 2));
-    painter.drawText(0, 0, 200, 100, Qt::AlignCenter, "UI Element");
+    iconName = "object-ui";
+    objectColor = QColor(120, 120, 150, 200);
+    typeName = "UI Element";
+    painter.fillRect(0, 0, 200, 100, objectColor);
     break;
 
   case NMSceneObjectType::Effect:
-    painter.setBrush(QColor(200, 100, 100, 180));
+    iconName = "object-effect";
+    objectColor = QColor(200, 120, 100, 200);
+    typeName = "Effect";
+    painter.setBrush(objectColor);
     painter.setPen(QPen(palette.textPrimary, 2));
     painter.drawEllipse(50, 50, 100, 100);
-    painter.drawText(pixmap.rect(), Qt::AlignCenter, "Effect");
     break;
   }
+
+  // Draw icon in top-left corner
+  QPixmap icon = NMIconManager::instance().getPixmap(iconName, 32, palette.textPrimary);
+  painter.drawPixmap(8, 8, icon);
+
+  // Draw type text
+  painter.setPen(QPen(palette.textPrimary, 2));
+  QFont boldFont;
+  boldFont.setBold(true);
+  boldFont.setPointSize(10);
+  painter.setFont(boldFont);
+  painter.drawText(pixmap.rect().adjusted(0, 0, 0, -10),
+                   Qt::AlignCenter | Qt::AlignBottom, typeName);
 
   setPixmap(pixmap);
 }
@@ -126,12 +149,65 @@ void NMSceneObject::mouseReleaseEvent(QGraphicsSceneMouseEvent *event) {
 }
 
 // ============================================================================
+// NMGizmoHandle - Interactive handle for gizmo
+// ============================================================================
+
+class NMGizmoHandle : public QGraphicsEllipseItem {
+public:
+  enum HandleType { XAxis, YAxis, XYPlane, Corner, Rotation };
+
+  NMGizmoHandle(HandleType type, QGraphicsItem *parent = nullptr)
+      : QGraphicsEllipseItem(parent), m_handleType(type) {
+    setFlag(ItemIsMovable, false);
+    setFlag(ItemIsSelectable, false);
+    setFlag(ItemSendsGeometryChanges, true);
+    setAcceptHoverEvents(true);
+    setCursor(Qt::PointingHandCursor);
+  }
+
+  HandleType handleType() const { return m_handleType; }
+
+protected:
+  void hoverEnterEvent(QGraphicsSceneHoverEvent *event) override {
+    m_isHovered = true;
+    update();
+    QGraphicsEllipseItem::hoverEnterEvent(event);
+  }
+
+  void hoverLeaveEvent(QGraphicsSceneHoverEvent *event) override {
+    m_isHovered = false;
+    update();
+    QGraphicsEllipseItem::hoverLeaveEvent(event);
+  }
+
+  void paint(QPainter *painter, const QStyleOptionGraphicsItem *option,
+             QWidget *widget) override {
+    // Make the handle more visible when hovered
+    if (m_isHovered) {
+      QBrush originalBrush = brush();
+      QColor highlightColor = originalBrush.color().lighter(150);
+      painter->setBrush(highlightColor);
+      painter->setPen(pen());
+      painter->drawEllipse(rect());
+    } else {
+      QGraphicsEllipseItem::paint(painter, option, widget);
+    }
+  }
+
+private:
+  HandleType m_handleType;
+  bool m_isHovered = false;
+};
+
+// ============================================================================
 // NMTransformGizmo
 // ============================================================================
 
 NMTransformGizmo::NMTransformGizmo(QGraphicsItem *parent)
     : QGraphicsItemGroup(parent) {
   setFlag(ItemIgnoresTransformations, true);
+  setFlag(ItemHasNoContents, false);
+  setHandlesChildEvents(false); // Allow children to handle their own events
   createMoveGizmo();
 }
 
@@ -176,9 +252,11 @@ void NMTransformGizmo::createMoveGizmo() {
   qreal arrowLength = 60;
   qreal arrowHeadSize = 12;
 
-  // X axis (Red)
+  // X axis (Red) - make it thicker for easier clicking
   auto *xLine = new QGraphicsLineItem(0, 0, arrowLength, 0, this);
-  xLine->setPen(QPen(QColor(220, 50, 50), 3));
+  xLine->setPen(QPen(QColor(220, 50, 50), 5));
+  xLine->setAcceptHoverEvents(true);
+  xLine->setCursor(Qt::SizeHorCursor);
   addToGroup(xLine);
 
   QPolygonF xArrow;
@@ -188,11 +266,15 @@ void NMTransformGizmo::createMoveGizmo() {
   auto *xArrowHead = new QGraphicsPolygonItem(xArrow, this);
   xArrowHead->setBrush(QColor(220, 50, 50));
   xArrowHead->setPen(Qt::NoPen);
+  xArrowHead->setAcceptHoverEvents(true);
+  xArrowHead->setCursor(Qt::SizeHorCursor);
   addToGroup(xArrowHead);
 
-  // Y axis (Green)
+  // Y axis (Green) - make it thicker for easier clicking
   auto *yLine = new QGraphicsLineItem(0, 0, 0, arrowLength, this);
-  yLine->setPen(QPen(QColor(50, 220, 50), 3));
+  yLine->setPen(QPen(QColor(50, 220, 50), 5));
+  yLine->setAcceptHoverEvents(true);
+  yLine->setCursor(Qt::SizeVerCursor);
   addToGroup(yLine);
 
   QPolygonF yArrow;
@@ -202,12 +284,16 @@ void NMTransformGizmo::createMoveGizmo() {
   auto *yArrowHead = new QGraphicsPolygonItem(yArrow, this);
   yArrowHead->setBrush(QColor(50, 220, 50));
   yArrowHead->setPen(Qt::NoPen);
+  yArrowHead->setAcceptHoverEvents(true);
+  yArrowHead->setCursor(Qt::SizeVerCursor);
   addToGroup(yArrowHead);
 
-  // Center circle
-  auto *center = new QGraphicsEllipseItem(-6, -6, 12, 12, this);
+  // Center circle - for XY plane movement
+  auto *center = new QGraphicsEllipseItem(-8, -8, 16, 16, this);
   center->setBrush(palette.accentPrimary);
   center->setPen(QPen(palette.textPrimary, 2));
+  center->setAcceptHoverEvents(true);
+  center->setCursor(Qt::SizeAllCursor);
   addToGroup(center);
 }
 
@@ -737,10 +823,66 @@ void NMSceneViewPanel::setupToolBar() {
 
   m_toolBar->addSeparator();
 
+  // Object creation buttons
+  QAction *actionAddCharacter = m_toolBar->addAction(
+      iconMgr.getIcon("object-character"), tr("Character"));
+  actionAddCharacter->setToolTip(tr("Add Character"));
+  connect(actionAddCharacter, &QAction::triggered, this, [this]() {
+    if (m_scene) {
+      QString id = QString("character_%1").arg(QDateTime::currentMSecsSinceEpoch());
+      auto *obj = new NMSceneObject(id, NMSceneObjectType::Character);
+      obj->setName("New Character");
+      obj->setPos(0, 0);
+      m_scene->addSceneObject(obj);
+    }
+  });
+
+  QAction *actionAddBackground = m_toolBar->addAction(
+      iconMgr.getIcon("object-background"), tr("Background"));
+  actionAddBackground->setToolTip(tr("Add Background"));
+  connect(actionAddBackground, &QAction::triggered, this, [this]() {
+    if (m_scene) {
+      QString id = QString("background_%1").arg(QDateTime::currentMSecsSinceEpoch());
+      auto *obj = new NMSceneObject(id, NMSceneObjectType::Background);
+      obj->setName("New Background");
+      obj->setPos(0, 0);
+      m_scene->addSceneObject(obj);
+    }
+  });
+
+  QAction *actionAddUI = m_toolBar->addAction(
+      iconMgr.getIcon("object-ui"), tr("UI"));
+  actionAddUI->setToolTip(tr("Add UI Element"));
+  connect(actionAddUI, &QAction::triggered, this, [this]() {
+    if (m_scene) {
+      QString id = QString("ui_%1").arg(QDateTime::currentMSecsSinceEpoch());
+      auto *obj = new NMSceneObject(id, NMSceneObjectType::UI);
+      obj->setName("New UI Element");
+      obj->setPos(0, 0);
+      m_scene->addSceneObject(obj);
+    }
+  });
+
+  QAction *actionAddEffect = m_toolBar->addAction(
+      iconMgr.getIcon("object-effect"), tr("Effect"));
+  actionAddEffect->setToolTip(tr("Add Effect"));
+  connect(actionAddEffect, &QAction::triggered, this, [this]() {
+    if (m_scene) {
+      QString id = QString("effect_%1").arg(QDateTime::currentMSecsSinceEpoch());
+      auto *obj = new NMSceneObject(id, NMSceneObjectType::Effect);
+      obj->setName("New Effect");
+      obj->setPos(0, 0);
+      m_scene->addSceneObject(obj);
+    }
+  });
+
+  m_toolBar->addSeparator();
+
   // Gizmo mode buttons (exclusive)
   auto *gizmoGroup = new QButtonGroup(this);
 
-  QAction *actionMove = m_toolBar->addAction(tr("Move"));
+  QAction *actionMove = m_toolBar->addAction(
+      iconMgr.getIcon("transform-move"), tr("Move"));
   actionMove->setToolTip(tr("Move Gizmo (W)"));
   actionMove->setCheckable(true);
   actionMove->setChecked(true);
@@ -751,13 +893,15 @@ void NMSceneViewPanel::setupToolBar() {
   connect(actionMove, &QAction::triggered, this,
           &NMSceneViewPanel::onGizmoModeMove);
 
-  QAction *actionRotate = m_toolBar->addAction(tr("Rotate"));
+  QAction *actionRotate = m_toolBar->addAction(
+      iconMgr.getIcon("transform-rotate"), tr("Rotate"));
   actionRotate->setToolTip(tr("Rotate Gizmo (E)"));
   actionRotate->setCheckable(true);
   connect(actionRotate, &QAction::triggered, this,
           &NMSceneViewPanel::onGizmoModeRotate);
 
-  QAction *actionScale = m_toolBar->addAction(tr("Scale"));
+  QAction *actionScale = m_toolBar->addAction(
+      iconMgr.getIcon("transform-scale"), tr("Scale"));
   actionScale->setToolTip(tr("Scale Gizmo (R)"));
   actionScale->setCheckable(true);
   connect(actionScale, &QAction::triggered, this,
