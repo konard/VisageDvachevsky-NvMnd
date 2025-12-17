@@ -40,6 +40,10 @@ void ResourceCache::put(const ResourceId &id, std::vector<u8> data) {
   if (existingIt != m_cache.end()) {
     m_currentSize -= existingIt->second.data.size();
     m_cache.erase(existingIt);
+    // Decrement entry count when removing existing entry
+    if (m_stats.entryCount > 0) {
+      --m_stats.entryCount;
+    }
 
     const auto orderIt = m_orderIterators.find(id);
     if (orderIt != m_orderIterators.end()) {
@@ -121,6 +125,10 @@ void ResourceCache::evictIfNeeded(usize requiredSpace) {
       m_currentSize -= it->second.data.size();
       m_cache.erase(it);
       ++m_stats.evictionCount;
+      // Decrement entry count when evicting
+      if (m_stats.entryCount > 0) {
+        --m_stats.entryCount;
+      }
     }
 
     m_orderIterators.erase(lruId);

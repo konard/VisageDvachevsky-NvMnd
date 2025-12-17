@@ -33,6 +33,8 @@ public:
                                 config.height, flags);
 
     if (!m_window) {
+      // Clean up SDL on window creation failure
+      SDL_Quit();
       return Result<void>::error(std::string("Failed to create window: ") +
                                  SDL_GetError());
     }

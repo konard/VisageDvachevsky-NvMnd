@@ -902,27 +902,48 @@ void NMStoryGraphPanel::updateNodeBreakpoints() {
 }
 
 void NMStoryGraphPanel::updateCurrentNode(const QString &nodeId) {
-  if (!m_scene)
+  if (!m_scene) {
+    qWarning() << "[StoryGraph] updateCurrentNode: scene is null!";
     return;
+  }
+
+  qDebug() << "[StoryGraph] updateCurrentNode:" << nodeId << "(prev was"
+           << m_currentExecutingNode << ")";
 
   // Clear previous execution state
   if (!m_currentExecutingNode.isEmpty()) {
-    if (auto *prevNode = findNodeByIdString(m_currentExecutingNode)) {
+    auto *prevNode = findNodeByIdString(m_currentExecutingNode);
+    if (prevNode) {
+      qDebug() << "[StoryGraph] Clearing execution state on"
+               << m_currentExecutingNode;
       prevNode->setCurrentlyExecuting(false);
+    } else {
+      qDebug() << "[StoryGraph] Warning: Previous node" << m_currentExecutingNode
+               << "not found in graph (may have been deleted)";
     }
   }
 
   // Set new execution state
   m_currentExecutingNode = nodeId;
   if (!nodeId.isEmpty()) {
-    if (auto *currentNode = findNodeByIdString(nodeId)) {
+    auto *currentNode = findNodeByIdString(nodeId);
+    if (currentNode) {
+      qDebug() << "[StoryGraph] Setting execution state on" << nodeId;
       currentNode->setCurrentlyExecuting(true);
 
-      // Center view on executing node
+      // Center view on executing node with safety check
       if (m_view) {
+        qDebug() << "[StoryGraph] Centering view on" << nodeId;
         m_view->centerOn(currentNode);
+      } else {
+        qWarning() << "[StoryGraph] View is null, cannot center!";
       }
+    } else {
+      qDebug() << "[StoryGraph] Warning: Current node" << nodeId
+               << "not found in graph (may not be loaded yet)";
     }
+  } else {
+    qDebug() << "[StoryGraph] Clearing current node (empty nodeId)";
   }
 }
 

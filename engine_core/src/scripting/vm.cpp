@@ -116,6 +116,8 @@ void VirtualMachine::signalContinue() {
 
 void VirtualMachine::signalChoice(i32 choice) {
   m_choiceResult = choice;
+  // Push the choice result onto the stack for the CHOICE opcode to use
+  push(choice);
   m_waiting = false;
   if (m_running && !m_paused) {
     run();
@@ -129,21 +131,37 @@ void VirtualMachine::executeInstruction(const Instruction &instr) {
 
   case OpCode::HALT:
     m_halted = true;
+    m_running = false;
     break;
 
   case OpCode::JUMP:
-    m_ip = instr.operand - 1; // -1 because we increment after
+    // Use signed arithmetic to avoid underflow when operand is 0
+    // If operand is 0, m_ip becomes max value, but step() will detect end of program
+    if (instr.operand > 0) {
+      m_ip = instr.operand - 1; // -1 because we increment after
+    } else {
+      // Jump to instruction 0 - set to max so after increment it wraps or we handle specially
+      m_ip = static_cast<u32>(-1); // Will wrap to 0 after increment
+    }
     break;
 
   case OpCode::JUMP_IF:
     if (asBool(pop())) {
-      m_ip = instr.operand - 1;
+      if (instr.operand > 0) {
+        m_ip = instr.operand - 1;
+      } else {
+        m_ip = static_cast<u32>(-1);
+      }
     }
     break;
 
   case OpCode::JUMP_IF_NOT:
     if (!asBool(pop())) {
-      m_ip = instr.operand - 1;
+      if (instr.operand > 0) {
+        m_ip = instr.operand - 1;
+      } else {
+        m_ip = static_cast<u32>(-1);
+      }
     }
     break;
 
@@ -247,14 +265,44 @@ void VirtualMachine::executeInstruction(const Instruction &instr) {
   case OpCode::EQ: {
     Value b = pop();
     Value a = pop();
-    push(asString(a) == asString(b));
+    // Type-aware equality comparison
+    ValueType typeA = getValueType(a);
+    ValueType typeB = getValueType(b);
+    if (typeA == ValueType::Null && typeB == ValueType::Null) {
+      push(true);
+    } else if (typeA == ValueType::Null || typeB == ValueType::Null) {
+      push(false);
+    } else if (typeA == ValueType::String || typeB == ValueType::String) {
+      push(asString(a) == asString(b));
+    } else if (typeA == ValueType::Bool && typeB == ValueType::Bool) {
+      push(asBool(a) == asBool(b));
+    } else if (typeA == ValueType::Float || typeB == ValueType::Float) {
+      push(asFloat(a) == asFloat(b));
+    } else {
+      push(asInt(a) == asInt(b));
+    }
     break;
   }
 
   case OpCode::NE: {
     Value b = pop();
     Value a = pop();
-    push(asString(a) != asString(b));
+    // Type-aware inequality comparison
+    ValueType typeA = getValueType(a);
+    ValueType typeB = getValueType(b);
+    if (typeA == ValueType::Null && typeB == ValueType::Null) {
+      push(false);
+    } else if (typeA == ValueType::Null || typeB == ValueType::Null) {
+      push(true);
+    } else if (typeA == ValueType::String || typeB == ValueType::String) {
+      push(asString(a) != asString(b));
+    } else if (typeA == ValueType::Bool && typeB == ValueType::Bool) {
+      push(asBool(a) != asBool(b));
+    } else if (typeA == ValueType::Float || typeB == ValueType::Float) {
+      push(asFloat(a) != asFloat(b));
+    } else {
+      push(asInt(a) != asInt(b));
+    }
     break;
   }
 
@@ -306,6 +354,66 @@ void VirtualMachine::executeInstruction(const Instruction &instr) {
     break;
   }
 
+  case OpCode::MOD: {
+    Value b = pop();
+    Value a = pop();
+    i32 divisor = asInt(b);
+    if (divisor != 0) {
+      push(asInt(a) % divisor);
+    } else {
+      NOVELMIND_LOG_ERROR("Modulo by zero");
+      push(0);
+    }
+    break;
+  }
+
+  case OpCode::NEG: {
+    Value a = pop();
+    if (getValueType(a) == ValueType::Float) {
+      push(-asFloat(a));
+    } else {
+      push(-asInt(a));
+    }
+    break;
+  }
+
+  case OpCode::LOAD_GLOBAL: {
+    const std::string &name = getString(instr.operand);
+    push(getVariable(name));
+    break;
+  }
+
+  case OpCode::STORE_GLOBAL: {
+    const std::string &name = getString(instr.operand);
+    setVariable(name, pop());
+    break;
+  }
+
+  case OpCode::CALL: {
+    // CALL opcode: operand is index into string table for function name
+    // For now, function calls are handled as native callbacks
+    const std::string &funcName = getString(instr.operand);
+    auto it = m_callbacks.find(OpCode::CALL);
+    if (it != m_callbacks.end()) {
+      std::vector<Value> args;
+      // Function name is passed as the first argument
+      args.push_back(funcName);
+      it->second(args);
+    } else {
+      NOVELMIND_LOG_WARN("No callback registered for CALL opcode, function: " + funcName);
+    }
+    // Push null as return value for unhandled functions
+    push(std::monostate{});
+    break;
+  }
+
+  case OpCode::RETURN: {
+    // For now, RETURN just halts execution
+    // A full implementation would need a call stack
+    m_halted = true;
+    break;
+  }
+
   case OpCode::SET_FLAG: {
     bool value = asBool(pop());
     const std::string &name = getString(instr.operand);
@@ -337,9 +445,14 @@ void VirtualMachine::executeInstruction(const Instruction &instr) {
       it->second(args);
     }
 
-    // These commands typically wait for user input
+    // These commands typically wait for user input or cause execution to pause
     if (instr.opcode == OpCode::SAY || instr.opcode == OpCode::CHOICE ||
         instr.opcode == OpCode::WAIT) {
+      m_waiting = true;
+    }
+    // GOTO_SCENE causes a scene transition which resets VM state
+    // Set waiting to prevent run() loop from continuing after reset
+    if (instr.opcode == OpCode::GOTO_SCENE) {
       m_waiting = true;
     }
     break;

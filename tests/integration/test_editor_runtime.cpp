@@ -370,6 +370,8 @@ TEST_CASE("EditorRuntimeHost - Scene snapshot during play", "[editor_runtime]")
     writeTestScript(tempDir, SIMPLE_SCRIPT);
 
     EditorRuntimeHost host;
+    // Disable hot reload to avoid expensive filesystem scans during test
+    host.setAutoHotReload(false);
 
     ProjectDescriptor project;
     project.name = "TestProject";
@@ -403,6 +405,8 @@ TEST_CASE("EditorRuntimeHost - Variables and flags inspection", "[editor_runtime
     writeTestScript(tempDir, SCRIPT_WITH_VARIABLES);
 
     EditorRuntimeHost host;
+    // Disable hot reload to avoid expensive filesystem scans during test
+    host.setAutoHotReload(false);
 
     ProjectDescriptor project;
     project.name = "TestProject";

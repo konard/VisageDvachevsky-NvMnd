@@ -506,8 +506,15 @@ StmtPtr Parser::parseStopStmt() {
 
 StmtPtr Parser::parseSetStmt() {
   // set variable = expression
+  // set flag variable = value
   SourceLocation loc = previous().location;
   SetStmt stmt;
+
+  // Check for optional 'flag' keyword
+  if (check(TokenType::Identifier) && peek().lexeme == "flag") {
+    advance(); // consume 'flag'
+    stmt.isFlag = true;
+  }
 
   const Token &var = consume(TokenType::Identifier, "Expected variable name");
   stmt.variable = var.lexeme;

@@ -36,24 +36,41 @@ NMPlayModeController::NMPlayModeController(QObject *parent)
 
 void NMPlayModeController::play() {
   if (m_playMode == Playing) {
+    qDebug() << "[PlayMode] Already playing, ignoring play() call";
     return; // Already playing
   }
 
   if (m_playMode == Stopped) {
-    // Start from beginning
+    // Start from beginning - reset ALL state
+    qDebug() << "[PlayMode] Starting playback from beginning";
     m_mockStepIndex = 0;
+    m_currentNodeId.clear();
+
+    // Reset variables to initial state
+    m_variables.clear();
+    m_variables["playerName"] = "Alice";
     m_variables["affection"] = 50;
     m_variables["chapter"] = 1;
-    m_callStack = {"main::start"};
+    m_variables["currentLocation"] = "SchoolCourtyard";
+
+    // Reset call stack
+    m_callStack.clear();
+    m_callStack << "main::start";
+
+    qDebug() << "[PlayMode] State reset: step=" << m_mockStepIndex
+             << ", affection=" << m_variables["affection"].toInt()
+             << ", chapter=" << m_variables["chapter"].toInt();
+
     startMockRuntime();
   } else if (m_playMode == Paused) {
     // Resume from pause
+    qDebug() << "[PlayMode] Resuming from pause at step" << m_mockStepIndex;
     m_mockTimer->start();
   }
 
   m_playMode = Playing;
   emit playModeChanged(Playing);
-  qDebug() << "[PlayMode] Started/Resumed playback";
+  qDebug() << "[PlayMode] Started/Resumed playback, mode =" << m_playMode;
 }
 
 void NMPlayModeController::pause() {
@@ -193,34 +210,55 @@ void NMPlayModeController::stopMockRuntime() {
 }
 
 void NMPlayModeController::simulateStep() {
-  if (m_mockStepIndex >= m_mockNodeSequence.size()) {
-    // Reached end of sequence
-    qDebug() << "[MockRuntime] Reached end of execution";
+  // Safety check: ensure we have a valid sequence
+  if (m_mockNodeSequence.isEmpty()) {
+    qWarning() << "[MockRuntime] ERROR: Node sequence is empty!";
     stop();
     return;
   }
 
-  // Execute next node
-  m_currentNodeId = m_mockNodeSequence[m_mockStepIndex];
-  emit currentNodeChanged(m_currentNodeId);
-  qDebug() << "[MockRuntime] Executing node:" << m_currentNodeId;
+  if (m_mockStepIndex < 0 || m_mockStepIndex >= m_mockNodeSequence.size()) {
+    // Reached end of sequence or invalid index
+    qDebug() << "[MockRuntime] Reached end of execution (step" << m_mockStepIndex
+             << "of" << m_mockNodeSequence.size() << ")";
+    stop();
+    return;
+  }
 
-  // Simulate variable changes
+  // Execute next node with logging
+  m_currentNodeId = m_mockNodeSequence[m_mockStepIndex];
+  qDebug() << "[MockRuntime] Executing node:" << m_currentNodeId << "(step"
+           << m_mockStepIndex << ")";
+
+  // Emit signal BEFORE modifying variables to avoid race conditions
+  emit currentNodeChanged(m_currentNodeId);
+
+  // Simulate variable changes with defensive checks
   if (m_currentNodeId.contains("choice")) {
-    m_variables["affection"] = m_variables["affection"].toInt() + 10;
+    // Get current affection value safely
+    int currentAffection = m_variables.value("affection", 50).toInt();
+    m_variables["affection"] = currentAffection + 10;
+    qDebug() << "[MockRuntime] Choice node: affection" << currentAffection
+             << "->" << (currentAffection + 10);
   } else if (m_currentNodeId.contains("scene")) {
-    m_variables["chapter"] = m_variables["chapter"].toInt() + 1;
+    int currentChapter = m_variables.value("chapter", 1).toInt();
+    m_variables["chapter"] = currentChapter + 1;
     m_variables["currentLocation"] = "ParkBench";
+    qDebug() << "[MockRuntime] Scene transition: chapter" << currentChapter
+             << "->" << (currentChapter + 1);
   }
 
   emit variablesChanged(m_variables);
 
-  // Simulate call stack changes
+  // Simulate call stack changes with safety checks
   if (m_currentNodeId.contains("dialogue")) {
-    m_callStack << QString("scene_%1::dialogue_%2")
-                       .arg(m_variables["chapter"].toInt())
-                       .arg(m_mockStepIndex);
+    int currentChapter = m_variables.value("chapter", 1).toInt();
+    QString stackEntry =
+        QString("scene_%1::dialogue_%2").arg(currentChapter).arg(m_mockStepIndex);
+    m_callStack << stackEntry;
+    qDebug() << "[MockRuntime] Call stack push:" << stackEntry;
   } else if (m_currentNodeId == "node_end") {
+    qDebug() << "[MockRuntime] Reached end node, resetting call stack";
     m_callStack.clear();
     m_callStack << "main::start";
   }
@@ -231,6 +269,7 @@ void NMPlayModeController::simulateStep() {
 
   // Advance to next step
   m_mockStepIndex++;
+  qDebug() << "[MockRuntime] Advanced to step" << m_mockStepIndex;
 }
 
 void NMPlayModeController::checkBreakpoint() {

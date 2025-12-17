@@ -1,5 +1,6 @@
 #include "NovelMind/editor/qt/panels/nm_scene_view_panel.hpp"
 #include "NovelMind/editor/qt/nm_icon_manager.hpp"
+#include "NovelMind/editor/qt/nm_play_mode_controller.hpp"
 #include "NovelMind/editor/qt/nm_style_manager.hpp"
 
 #include <QAbstractButton>
@@ -729,6 +730,15 @@ void NMSceneViewPanel::onInitialize() {
 
   // Add demo objects
   addDemoObjects();
+
+  // Connect to Play Mode Controller for runtime preview
+  auto &playController = NMPlayModeController::instance();
+  connect(&playController, &NMPlayModeController::currentNodeChanged, this,
+          &NMSceneViewPanel::onPlayModeCurrentNodeChanged);
+  connect(&playController, &NMPlayModeController::playModeChanged, this,
+          &NMSceneViewPanel::onPlayModeChanged);
+
+  qDebug() << "[SceneView] Connected to PlayModeController for runtime preview";
 }
 
 void NMSceneViewPanel::onUpdate(double /*deltaTime*/) {
@@ -1009,6 +1019,83 @@ void NMSceneViewPanel::onObjectPositionChanged(const QString &objectId,
   if (m_infoOverlay && m_scene) {
     if (auto *obj = m_scene->findSceneObject(objectId)) {
       m_infoOverlay->setSelectedObjectInfo(obj->name(), position);
+    }
+  }
+}
+
+// === Play Mode Integration ===
+
+void NMSceneViewPanel::onPlayModeCurrentNodeChanged(const QString &nodeId) {
+  if (!m_scene) {
+    return;
+  }
+
+  qDebug() << "[SceneView] Play mode node changed:" << nodeId;
+
+  // Display visual feedback based on node type
+  if (nodeId.contains("dialogue")) {
+    // Create/update dialogue box UI element
+    NMSceneObject *dialogueBox = m_scene->findSceneObject("runtime_dialogue_box");
+    if (!dialogueBox) {
+      qDebug() << "[SceneView] Creating runtime dialogue box";
+      dialogueBox = new NMSceneObject("runtime_dialogue_box", NMSceneObjectType::UI);
+      dialogueBox->setName("Dialogue (Runtime)");
+      dialogueBox->setPos(-100, 250);
+      m_scene->addSceneObject(dialogueBox);
+    }
+    // Make dialogue box visible and highlighted
+    dialogueBox->setOpacity(1.0);
+    dialogueBox->setVisible(true);
+
+    // Flash the dialogue box to show it's active
+    qDebug() << "[SceneView] Showing dialogue box for node:" << nodeId;
+
+  } else if (nodeId.contains("choice")) {
+    // Create/update choice menu UI element
+    NMSceneObject *choiceMenu = m_scene->findSceneObject("runtime_choice_menu");
+    if (!choiceMenu) {
+      qDebug() << "[SceneView] Creating runtime choice menu";
+      choiceMenu = new NMSceneObject("runtime_choice_menu", NMSceneObjectType::UI);
+      choiceMenu->setName("Choice Menu (Runtime)");
+      choiceMenu->setPos(0, 200);
+      m_scene->addSceneObject(choiceMenu);
+    }
+    // Make choice menu visible
+    choiceMenu->setOpacity(1.0);
+    choiceMenu->setVisible(true);
+
+    qDebug() << "[SceneView] Showing choice menu for node:" << nodeId;
+
+  } else if (nodeId.contains("scene") || nodeId.contains("transition")) {
+    // Update background
+    qDebug() << "[SceneView] Scene transition for node:" << nodeId;
+
+  } else if (nodeId.isEmpty()) {
+    // Clear runtime UI elements when playback stops
+    qDebug() << "[SceneView] Clearing runtime UI elements";
+    if (auto *dialogueBox = m_scene->findSceneObject("runtime_dialogue_box")) {
+      dialogueBox->setVisible(false);
+    }
+    if (auto *choiceMenu = m_scene->findSceneObject("runtime_choice_menu")) {
+      choiceMenu->setVisible(false);
+    }
+  }
+}
+
+void NMSceneViewPanel::onPlayModeChanged(int mode) {
+  auto playMode = static_cast<NMPlayModeController::PlayMode>(mode);
+  qDebug() << "[SceneView] Play mode changed to:" << playMode;
+
+  if (playMode == NMPlayModeController::Stopped) {
+    // Hide all runtime UI elements when stopped
+    qDebug() << "[SceneView] Hiding runtime UI elements (playback stopped)";
+    if (m_scene) {
+      if (auto *dialogueBox = m_scene->findSceneObject("runtime_dialogue_box")) {
+        dialogueBox->setVisible(false);
+      }
+      if (auto *choiceMenu = m_scene->findSceneObject("runtime_choice_menu")) {
+        choiceMenu->setVisible(false);
+      }
     }
   }
 }
