@@ -251,6 +251,10 @@ private slots:
   void onObjectPositionChanged(const QString &objectId,
                                const QPointF &position);
 
+  // Play mode integration
+  void onPlayModeCurrentNodeChanged(const QString &nodeId);
+  void onPlayModeChanged(int mode);
+
 private:
   void setupToolBar();
   void setupContent();
