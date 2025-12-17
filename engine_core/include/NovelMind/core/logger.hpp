@@ -42,7 +42,7 @@ private:
 
   LogLevel m_level;
   std::ofstream m_fileStream;
-  std::mutex m_mutex;
+  mutable std::mutex m_mutex;
   bool m_useColors;
 };
 

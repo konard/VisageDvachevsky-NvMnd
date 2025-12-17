@@ -132,6 +132,12 @@ Result<void> PackReader::readPackHeader(std::ifstream &file,
     return Result<void>::error("Incompatible pack version");
   }
 
+  // Security: Validate resource count to prevent excessive allocations
+  constexpr u32 MAX_RESOURCE_COUNT = 1000000; // 1 million resources max
+  if (header.resourceCount > MAX_RESOURCE_COUNT) {
+    return Result<void>::error("Resource count exceeds maximum allowed");
+  }
+
   return Result<void>::ok();
 }
 
@@ -173,6 +179,12 @@ Result<void> PackReader::readStringTable(std::ifstream &file,
     return Result<void>::error("Failed to read string count");
   }
 
+  // Security: Validate string count to prevent excessive allocations
+  constexpr u32 MAX_STRING_COUNT = 10000000; // 10 million strings max
+  if (stringCount > MAX_STRING_COUNT) {
+    return Result<void>::error("String count exceeds maximum allowed");
+  }
+
   // Read string offsets
   std::vector<u32> offsets(stringCount);
   file.read(reinterpret_cast<char *>(offsets.data()),
@@ -186,10 +198,18 @@ Result<void> PackReader::readStringTable(std::ifstream &file,
   auto stringDataStart = file.tellg();
   pack.stringTable.reserve(stringCount);
 
+  // Security: Limit individual string length to prevent excessive allocations
+  constexpr usize MAX_STRING_LENGTH = 1024 * 1024; // 1 MB per string max
+
   for (u32 i = 0; i < stringCount; ++i) {
     file.seekg(stringDataStart + static_cast<std::streamoff>(offsets[i]));
     std::string str;
     std::getline(file, str, '\0');
+
+    if (str.size() > MAX_STRING_LENGTH) {
+      return Result<void>::error("String length exceeds maximum allowed");
+    }
+
     pack.stringTable.push_back(str);
   }
 
@@ -211,6 +231,12 @@ Result<void> PackReader::readStringTable(std::ifstream &file,
 Result<std::vector<u8>>
 PackReader::readResourceData(const std::string &packPath,
                              const PackResourceEntry &entry) const {
+  // Security: Validate resource size to prevent excessive allocations
+  constexpr u64 MAX_RESOURCE_SIZE = 512ULL * 1024 * 1024; // 512 MB max per resource
+  if (entry.compressedSize > MAX_RESOURCE_SIZE) {
+    return Result<std::vector<u8>>::error("Resource size exceeds maximum allowed");
+  }
+
   std::ifstream file(packPath, std::ios::binary);
   if (!file.is_open()) {
     return Result<std::vector<u8>>::error("Failed to open pack file");
@@ -221,7 +247,23 @@ PackReader::readResourceData(const std::string &packPath,
     return Result<std::vector<u8>>::error("Pack not mounted");
   }
 
+  // Security: Validate offset doesn't cause overflow
   u64 absoluteOffset = it->second.header.dataOffset + entry.dataOffset;
+  if (absoluteOffset < it->second.header.dataOffset) {
+    return Result<std::vector<u8>>::error("Invalid resource offset (overflow)");
+  }
+
+  // Get file size to validate offset + size doesn't exceed file bounds
+  file.seekg(0, std::ios::end);
+  auto fileSize = file.tellg();
+  if (fileSize < 0) {
+    return Result<std::vector<u8>>::error("Failed to get pack file size");
+  }
+
+  if (absoluteOffset + entry.compressedSize > static_cast<u64>(fileSize)) {
+    return Result<std::vector<u8>>::error("Resource data extends beyond pack file");
+  }
+
   file.seekg(static_cast<std::streamoff>(absoluteOffset));
 
   if (!file) {

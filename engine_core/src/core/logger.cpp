@@ -21,7 +21,10 @@ void Logger::setLevel(LogLevel level) {
   m_level = level;
 }
 
-LogLevel Logger::getLevel() const { return m_level; }
+LogLevel Logger::getLevel() const {
+  std::lock_guard<std::mutex> lock(m_mutex);
+  return m_level;
+}
 
 void Logger::setOutputFile(const std::string &path) {
   std::lock_guard<std::mutex> lock(m_mutex);
@@ -36,11 +39,12 @@ void Logger::closeOutputFile() {
 }
 
 void Logger::log(LogLevel level, std::string_view message) {
+  std::lock_guard<std::mutex> lock(m_mutex);
+
+  // Thread safety: read m_level inside lock
   if (level < m_level || m_level == LogLevel::Off) {
     return;
   }
-
-  std::lock_guard<std::mutex> lock(m_mutex);
 
   std::string timestamp = getCurrentTimestamp();
   const char *levelStr = levelToString(level);
@@ -128,8 +132,16 @@ std::string Logger::getCurrentTimestamp() const {
                 now.time_since_epoch()) %
             1000;
 
+  // Thread safety: use localtime_r (POSIX) or localtime_s (Windows)
+  std::tm timeinfo{};
+#if defined(_WIN32) || defined(_WIN64)
+  localtime_s(&timeinfo, &time);
+#else
+  localtime_r(&time, &timeinfo);
+#endif
+
   std::ostringstream oss;
-  oss << std::put_time(std::localtime(&time), "%Y-%m-%d %H:%M:%S");
+  oss << std::put_time(&timeinfo, "%Y-%m-%d %H:%M:%S");
   oss << '.' << std::setfill('0') << std::setw(3) << ms.count();
   return oss.str();
 }

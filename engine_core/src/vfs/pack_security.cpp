@@ -203,6 +203,19 @@ std::vector<u8> PackDecryptor::deriveKey(const std::string &password,
                                          const u8 *salt, usize saltSize) {
   std::vector<u8> key(32);
 
+  // Security: Handle empty password case to avoid division by zero / undefined behavior
+  if (password.empty()) {
+    // Use salt-only derivation if password is empty (not recommended for production)
+    if (salt != nullptr && saltSize > 0) {
+      for (usize i = 0; i < key.size(); ++i) {
+        key[i] = salt[i % saltSize];
+      }
+    }
+    // Note: Empty password with no salt produces all-zero key
+    // This is a security concern and should be avoided in production
+    return key;
+  }
+
   for (usize i = 0; i < key.size(); ++i) {
     key[i] = static_cast<u8>(password[i % password.size()]);
     if (salt != nullptr && saltSize > 0) {

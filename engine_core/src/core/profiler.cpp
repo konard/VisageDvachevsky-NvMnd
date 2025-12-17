@@ -40,7 +40,9 @@ void Profiler::beginSample(const std::string &name,
     return;
   }
 
-  auto &threadData = getThreadData();
+  // Thread safety: Hold lock for entire operation
+  std::lock_guard<std::mutex> lock(m_mutex);
+  auto &threadData = m_threadData[std::this_thread::get_id()];
 
   ProfileSample sample;
   sample.name = name;
@@ -58,7 +60,9 @@ void Profiler::endSample(const std::string &name) {
     return;
   }
 
-  auto &threadData = getThreadData();
+  // Thread safety: Hold lock for entire operation
+  std::lock_guard<std::mutex> lock(m_mutex);
+  auto &threadData = m_threadData[std::this_thread::get_id()];
 
   if (threadData.activeSamples.empty()) {
     return;
@@ -68,8 +72,6 @@ void Profiler::endSample(const std::string &name) {
        it != threadData.activeSamples.rend(); ++it) {
     if (it->name == name) {
       it->endTime = std::chrono::steady_clock::now();
-
-      std::lock_guard<std::mutex> lock(m_mutex);
 
       auto &stats = m_stats[name];
       stats.name = name;

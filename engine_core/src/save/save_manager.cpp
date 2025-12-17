@@ -90,12 +90,23 @@ Result<SaveData> SaveManager::load(i32 slot) {
     return Result<SaveData>::error("Save file not found: " + filename);
   }
 
-  auto readString = [&file]() -> std::string {
+  // Security: Define maximum allowed sizes to prevent OOM attacks
+  constexpr u32 MAX_STRING_LENGTH = 1024 * 1024;     // 1 MB per string
+  constexpr u32 MAX_VARIABLE_COUNT = 100000;          // 100K variables max
+
+  // Helper to read string with validation
+  auto readString = [&file](u32 maxLen) -> std::pair<std::string, bool> {
     u32 len;
     file.read(reinterpret_cast<char *>(&len), sizeof(len));
+    if (!file || len > maxLen) {
+      return {"", false};
+    }
     std::string str(len, '\0');
     file.read(str.data(), static_cast<std::streamsize>(len));
-    return str;
+    if (!file) {
+      return {"", false};
+    }
+    return {str, true};
   };
 
   SaveData data;
@@ -106,48 +117,105 @@ Result<SaveData> SaveManager::load(i32 slot) {
   file.read(reinterpret_cast<char *>(&magic), sizeof(magic));
   file.read(reinterpret_cast<char *>(&version), sizeof(version));
 
+  if (!file) {
+    return Result<SaveData>::error("Failed to read save file header");
+  }
+
   if (magic != 0x564D4E53) {
     return Result<SaveData>::error("Invalid save file format");
   }
 
   // Scene and node
-  data.sceneId = readString();
-  data.nodeId = readString();
+  auto [sceneId, sceneOk] = readString(MAX_STRING_LENGTH);
+  if (!sceneOk) {
+    return Result<SaveData>::error("Invalid or corrupted scene ID in save file");
+  }
+  data.sceneId = std::move(sceneId);
+
+  auto [nodeId, nodeOk] = readString(MAX_STRING_LENGTH);
+  if (!nodeOk) {
+    return Result<SaveData>::error("Invalid or corrupted node ID in save file");
+  }
+  data.nodeId = std::move(nodeId);
 
   // Int variables
   u32 intCount;
   file.read(reinterpret_cast<char *>(&intCount), sizeof(intCount));
+  if (!file || intCount > MAX_VARIABLE_COUNT) {
+    return Result<SaveData>::error("Invalid or corrupted int variable count");
+  }
   for (u32 i = 0; i < intCount; ++i) {
-    std::string name = readString();
+    auto [name, nameOk] = readString(MAX_STRING_LENGTH);
+    if (!nameOk) {
+      return Result<SaveData>::error("Invalid int variable name at index " + std::to_string(i));
+    }
     i32 value;
     file.read(reinterpret_cast<char *>(&value), sizeof(value));
+    if (!file) {
+      return Result<SaveData>::error("Failed to read int variable value at index " + std::to_string(i));
+    }
     data.intVariables[name] = value;
   }
 
   // Flags
   u32 flagCount;
   file.read(reinterpret_cast<char *>(&flagCount), sizeof(flagCount));
+  if (!file || flagCount > MAX_VARIABLE_COUNT) {
+    return Result<SaveData>::error("Invalid or corrupted flag count");
+  }
   for (u32 i = 0; i < flagCount; ++i) {
-    std::string name = readString();
+    auto [name, nameOk] = readString(MAX_STRING_LENGTH);
+    if (!nameOk) {
+      return Result<SaveData>::error("Invalid flag name at index " + std::to_string(i));
+    }
     u8 bval;
     file.read(reinterpret_cast<char *>(&bval), sizeof(bval));
+    if (!file) {
+      return Result<SaveData>::error("Failed to read flag value at index " + std::to_string(i));
+    }
     data.flags[name] = bval != 0;
   }
 
   // String variables
   u32 strCount;
   file.read(reinterpret_cast<char *>(&strCount), sizeof(strCount));
+  if (!file || strCount > MAX_VARIABLE_COUNT) {
+    return Result<SaveData>::error("Invalid or corrupted string variable count");
+  }
   for (u32 i = 0; i < strCount; ++i) {
-    std::string name = readString();
-    std::string value = readString();
+    auto [name, nameOk] = readString(MAX_STRING_LENGTH);
+    if (!nameOk) {
+      return Result<SaveData>::error("Invalid string variable name at index " + std::to_string(i));
+    }
+    auto [value, valueOk] = readString(MAX_STRING_LENGTH);
+    if (!valueOk) {
+      return Result<SaveData>::error("Invalid string variable value at index " + std::to_string(i));
+    }
     data.stringVariables[name] = value;
   }
 
   // Timestamp
   file.read(reinterpret_cast<char *>(&data.timestamp), sizeof(data.timestamp));
+  if (!file) {
+    return Result<SaveData>::error("Failed to read timestamp");
+  }
 
   // Checksum
-  file.read(reinterpret_cast<char *>(&data.checksum), sizeof(data.checksum));
+  u32 storedChecksum;
+  file.read(reinterpret_cast<char *>(&storedChecksum), sizeof(storedChecksum));
+  if (!file) {
+    return Result<SaveData>::error("Failed to read checksum");
+  }
+  data.checksum = storedChecksum;
+
+  // Verify checksum
+  u32 calculatedChecksum = calculateChecksum(data);
+  if (calculatedChecksum != storedChecksum) {
+    NOVELMIND_LOG_WARN("Save file checksum mismatch in slot " + std::to_string(slot) +
+                       " (stored: " + std::to_string(storedChecksum) +
+                       ", calculated: " + std::to_string(calculatedChecksum) + ")");
+    // Continue loading but warn - corruption detected
+  }
 
   NOVELMIND_LOG_INFO("Loaded from slot " + std::to_string(slot));
   return Result<SaveData>::ok(std::move(data));
