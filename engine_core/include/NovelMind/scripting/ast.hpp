@@ -193,11 +193,13 @@ struct StopStmt {
 };
 
 /**
- * @brief Set statement: set flag_name = value
+ * @brief Set statement: set variable = value
+ *        or: set flag variable = value (for boolean flags)
  */
 struct SetStmt {
   std::string variable;
   ExprPtr value;
+  bool isFlag = false; ///< True if this is a flag (boolean) variable
 };
 
 /**
